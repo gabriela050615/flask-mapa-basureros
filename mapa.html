@@ -4,30 +4,31 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mapa de Basureros</title>
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyC4Jv7ZGEVeYvReL1Jd3ln1eqyQQVlxa-I&callback=initMap" async defer></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=TU_API_KEY&callback=initMap" async defer></script>
 </head>
 <body>
     <h2>Mapa de Basureros</h2>
     <button onclick="cargarRuta(false)">Ruta con basureros llenos</button>
     <button onclick="cargarRuta(true)">Ruta incluyendo basureros medios</button>
     <div id="map" style="width: 100%; height: 500px;"></div>
+
     <script>
         let map;
         let directionsService;
         let directionsRenderer;
-    
+
         function initMap() {
             map = new google.maps.Map(document.getElementById("map"), {
                 zoom: 14,
                 center: { lat: 0.35175, lng: -78.1182 }
             });
-    
+
             directionsService = new google.maps.DirectionsService();
             directionsRenderer = new google.maps.DirectionsRenderer({
                 map: map,
-                suppressMarkers: true  // Evita que Google agregue sus propios marcadores
+                suppressMarkers: true
             });
-    
+
             fetch("/api/basureros")
                 .then(response => response.json())
                 .then(data => {
@@ -41,7 +42,7 @@
                 })
                 .catch(error => console.error("Error cargando los basureros:", error));
         }
-    
+
         function cargarRuta(incluirMedios) {
             fetch(`/api/ruta?medio=${incluirMedios}`)
                 .then(response => response.json())
@@ -50,22 +51,19 @@
                         alert("Error: " + data.error);
                         return;
                     }
-    
-                    // Convertir la ruta en un array de waypoints para Google Maps Directions API
+
                     const waypoints = data.ruta.slice(1, -1).map(punto => ({
                         location: new google.maps.LatLng(punto.LATITUD, punto.LONGITUD),
                         stopover: true
                     }));
-    
-                    // Configurar la solicitud de dirección para seguir las calles
+
                     const request = {
                         origin: new google.maps.LatLng(data.ruta[0].LATITUD, data.ruta[0].LONGITUD),
                         destination: new google.maps.LatLng(data.ruta[data.ruta.length - 1].LATITUD, data.ruta[data.ruta.length - 1].LONGITUD),
                         waypoints: waypoints,
                         travelMode: google.maps.TravelMode.DRIVING
                     };
-    
-                    // Enviar la solicitud a Directions API
+
                     directionsService.route(request, function (result, status) {
                         if (status === google.maps.DirectionsStatus.OK) {
                             directionsRenderer.setDirections(result);
