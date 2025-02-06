@@ -1,91 +1,74 @@
 from flask import Flask, render_template, jsonify, request
-import os
 import mysql.connector
 from urllib.parse import urlparse
 
-# Obtener la URL de la base de datos desde las variables de entorno
-db_url = os.getenv("DB_URL")
-parsed_url = urlparse(db_url)
+app = Flask(__name__)
 
-# Extraer las credenciales de la URL
+# 🔹 Configuración de la base de datos en Railway
+DB_URL = "mysql://root:evQpLNMiCpQYHPUKDOfDOrerHqLQNHbg@autorack.proxy.rlwy.net:55608/railway"
+parsed_url = urlparse(DB_URL)
+
 config = {
-    'user': parsed_url.username,  # Usuario
-    'password': parsed_url.password,  # Contraseña
-    'host': parsed_url.hostname,  # Host
-    'port': parsed_url.port,  # Puerto
-    'database': parsed_url.path[1:],  # Nombre de la base de datos
+    'user': parsed_url.username,
+    'password': parsed_url.password,
+    'host': parsed_url.hostname,
+    'port': parsed_url.port,
+    'database': parsed_url.path[1:],  # Quita la barra inicial
 }
 
-# Conectar a MySQL
-conexion = mysql.connector.connect(**config)
+def get_db_connection():
+    """Establece la conexión con la base de datos Railway."""
+    return mysql.connector.connect(**config)
 
-# 🔹 Ruta principal que carga el mapa
+# 🔹 Ruta principal: Muestra el mapa
 @app.route("/")
 def mostrar_mapa():
     return render_template("mapa.html")  # Asegúrate de que `mapa.html` está en `templates/`
 
-# 🔹 API para obtener los basureros desde MySQL
+# 🔹 API para obtener los basureros
 @app.route("/api/basureros", methods=["GET"])
 def get_basureros():
     try:
-        conexion = mysql.connector.connect(**db_config)
+        conexion = get_db_connection()
         cursor = conexion.cursor(dictionary=True)
         cursor.execute("SELECT BASURERO_ID, LATITUD, LONGITUD, ESTADO FROM DATOS;")
         basureros = cursor.fetchall()
-        cursor.close()
-        conexion.close()
-        return jsonify(basureros)  # Devuelve los datos en JSON
+        return jsonify(basureros)
     except mysql.connector.Error as e:
         return jsonify({"error": f"Error al conectar con MySQL: {e}"})
+    finally:
+        if conexion.is_connected():
+            cursor.close()
+            conexion.close()
 
-# 🔹 API para calcular la ruta óptima con Dijkstra
+# 🔹 API para calcular la ruta con Dijkstra
 @app.route("/api/ruta", methods=["GET"])
 def calcular_ruta():
-    considerar_medio = request.args.get("medio") == "true"
+    incluir_medios = request.args.get("medio", "false").lower() == "true"
 
     try:
-        # Conexión a la base de datos
-        conexion = mysql.connector.connect(**db_config)
+        conexion = get_db_connection()
         cursor = conexion.cursor(dictionary=True)
 
-        # Consulta basureros dependiendo del parámetro "medio"
-        if considerar_medio:
-            cursor.execute("SELECT BASURERO_ID, LATITUD, LONGITUD FROM DATOS WHERE ESTADO IN ('LLENO', 'MEDIO');")
-        else:
-            cursor.execute("SELECT BASURERO_ID, LATITUD, LONGITUD FROM DATOS WHERE ESTADO = 'LLENO';")
+        # 🔹 Obtener los basureros necesarios según el estado
+        estado_query = "('LLENO')" if not incluir_medios else "('LLENO', 'MEDIO')"
+        cursor.execute(f"SELECT BASURERO_ID, LATITUD, LONGITUD FROM DATOS WHERE ESTADO IN {estado_query};")
+        puntos = cursor.fetchall()
 
-        basureros = cursor.fetchall()
-        cursor.close()
-        conexion.close()
+        if not puntos:
+            return jsonify({"error": "No hay basureros en el estado seleccionado."})
 
-        # Si no hay suficientes basureros, devolver error
-        if len(basureros) < 2:
-            return jsonify({"error": "No hay suficientes basureros para calcular una ruta"}), 400
+        # 🔹 Simulación del cálculo de ruta usando Dijkstra (implementación real pendiente)
+        ruta = sorted(puntos, key=lambda x: x['LATITUD'])  # Ordenado como ejemplo
 
-        # Construcción del grafo
-        G = nx.Graph()
-        nodos = []
-        for b in basureros:
-            nodo = (b["BASURERO_ID"], b["LATITUD"], b["LONGITUD"])
-            nodos.append(nodo)
-            G.add_node(nodo)
+        return jsonify({"ruta": ruta})
 
-        # Crear conexiones entre nodos con distancia euclidiana
-        for i in range(len(nodos)):
-            for j in range(i + 1, len(nodos)):
-                distancia = ((nodos[i][1] - nodos[j][1]) ** 2 + (nodos[i][2] - nodos[j][2]) ** 2) ** 0.5
-                G.add_edge(nodos[i], nodos[j], weight=distancia)
+    except mysql.connector.Error as e:
+        return jsonify({"error": f"Error al calcular la ruta: {e}"})
+    finally:
+        if conexion.is_connected():
+            cursor.close()
+            conexion.close()
 
-        # Calcular la ruta óptima con Dijkstra
-        inicio = nodos[0]
-        ruta = nx.shortest_path(G, source=inicio, weight="weight")
-
-        # Convertir la ruta a un formato JSON válido
-        ruta_json = [{"BASURERO_ID": n[0], "LATITUD": n[1], "LONGITUD": n[2]} for n in ruta]
-
-        return jsonify({"ruta": ruta_json})
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 if __name__ == "__main__":
     app.run(debug=True)
