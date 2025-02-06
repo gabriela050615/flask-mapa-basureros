@@ -1,16 +1,23 @@
 from flask import Flask, render_template, jsonify, request
+import os
 import mysql.connector
-import networkx as nx
+from urllib.parse import urlparse
 
-app = Flask(__name__)
+# Obtener la URL de la base de datos desde las variables de entorno
+db_url = os.getenv("DB_URL")
+parsed_url = urlparse(db_url)
 
-# Configuración de la base de datos MySQL
-db_config = {
-    "host": "localhost",
-    "user": "root",
-    "password": "12345678",  # Cambia esto por tu contraseña de MySQL
-    "database": "RUTAS"
+# Extraer las credenciales de la URL
+config = {
+    'user': parsed_url.username,  # Usuario
+    'password': parsed_url.password,  # Contraseña
+    'host': parsed_url.hostname,  # Host
+    'port': parsed_url.port,  # Puerto
+    'database': parsed_url.path[1:],  # Nombre de la base de datos
 }
+
+# Conectar a MySQL
+conexion = mysql.connector.connect(**config)
 
 # 🔹 Ruta principal que carga el mapa
 @app.route("/")
